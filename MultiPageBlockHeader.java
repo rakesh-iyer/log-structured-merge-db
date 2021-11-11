@@ -37,9 +37,6 @@ public class MultiPageBlockHeader extends Debuggable {
     }
 
     void incrementCount() {
-        if (count == size) {
-            logger.info("");
-        }
         count++;
     }
 
@@ -86,7 +83,6 @@ public class MultiPageBlockHeader extends Debuggable {
         // This means you cannot do 2 splits at the same time. This might not be a major bottleneck.
         DirectoryNode.resetOffsetMap();
         MultiPageBlockHeader candidateMultiPageBlockHeader = this;
-        int verifyCount = count;
 
         if (node == DirectoryNode.getRoot()) {
             if (increment) {
@@ -109,10 +105,6 @@ public class MultiPageBlockHeader extends Debuggable {
                 }
             }
 
-            logger.info("found matching header for the node");
-            logger.info(currentNode);
-            logger.info(candidateMultiPageBlockHeader);
-
             // in case the next pointer is somehow wrong lets terminate this based on block number.
             if (candidateMultiPageBlockHeader.multiPageBlockNumber != multiPageBlockNumber) {
                 if (MultiPageBlock.isFillingBlock(multiPageBlockNumber)) {
@@ -128,7 +120,6 @@ public class MultiPageBlockHeader extends Debuggable {
 
         do {
             DirectoryNode iteratedCurrentNode = null;
-            logger.info("Iteration -- " + offsetFromSelectedNode);
             // If the node is the selected one, update it directly so the in memory copy is uptodate.
             if (offsetFromSelectedNode == 0) {
                 iteratedCurrentNode = currentNode;
@@ -142,14 +133,6 @@ public class MultiPageBlockHeader extends Debuggable {
             for (; multiPageBlockHeaderIterator.hasNext();) {
                 candidateMultiPageBlockHeader = multiPageBlockHeaderIterator.next();
                 if (candidateMultiPageBlockHeader.multiPageBlockNumber == multiPageBlockNumber) {
-                    if (candidateMultiPageBlockHeader.count != verifyCount)  {
-                        if (MultiPageBlock.isFillingBlock(multiPageBlockNumber)) {
-                            logger.info("inconsistency found for filling block mpbn: " + candidateMultiPageBlockHeader.multiPageBlockNumber);
-                        } else {
-                            throw new Exception("this is totally unexpected 2");
-                        }
-                    }
-
                     if (increment) {
                         candidateMultiPageBlockHeader.incrementCount();
                     } else {
@@ -167,12 +150,8 @@ public class MultiPageBlockHeader extends Debuggable {
                     currentNode = iteratedCurrentNode;
                 }
                 currentNode = currentNode.getNextNode();
-                logger.info("count progressing to next node");
-                logger.info(currentNode);
             }
         } while (candidateMultiPageBlockHeader.inNext);
-        logger.info("Finished update count");
-        logger.info(node);
     }
 
     // the directory node indicates which pages move to the sibling and which remain,
@@ -188,7 +167,6 @@ public class MultiPageBlockHeader extends Debuggable {
     MultiPageBlockHeader split(DirectoryNode node, boolean insertAfter) throws Exception {
         // Reset the offset map before doing this split.
         // This means you cannot do 2 splits at the same time.
-        logger.warn("Splitting mpbh" + this);
         DirectoryNode currentNode = node;
         MultiPageBlockHeader candidateMultiPageBlockHeader = this;
         int offsetFromSelectedNode = 0;
@@ -211,9 +189,6 @@ public class MultiPageBlockHeader extends Debuggable {
                     break;
                 }
             }
-
-            logger.warn("Matching candidate for previous node");
-            logger.warn(candidateMultiPageBlockHeader);
         }
 
         MultiPageBlockHeader replacementMultiPageBlockHeader = MultiPageBlock.allocate();
@@ -237,18 +212,13 @@ public class MultiPageBlockHeader extends Debuggable {
 
             // If the node is the selected one, update it directly so the in memory copy is uptodate.
             if (offsetFromSelectedNode == 0) {
-                logger.warn("Processing current node.");
-                //
                 iteratedCurrentNode = currentNode;
                 currentNode = node;
                 offsetFromSelectedNode = -1;
             } else if (offsetFromSelectedNode > 0) {
-                logger.warn("Processing previous node.");
                 offsetFromSelectedNode--;
             }
 
-            logger.warn("node being processed is");
-            logger.warn(currentNode);
             // ensure that the candidate multi page block header is not inadvertently mutating some data.
             // add the number of pages uptil this node corresponding to the multi page block.
             Iterator<MultiPageBlockHeader> multiPageBlockHeaderIterator = currentNode.getMultiPageBlockHeaders().iterator();
@@ -257,15 +227,11 @@ public class MultiPageBlockHeader extends Debuggable {
                 candidateMultiPageBlockHeader = multiPageBlockHeaderIterator.next();
                 if (candidateMultiPageBlockHeader.multiPageBlockNumber == splittingMultiPageBlockNumber) {
                     sumCountNodesForMultiPageBlock += candidateMultiPageBlockHeader.getCountForNode();
-                    logger.warn("Working on" + candidateMultiPageBlockHeader);
                     break;
                 }
             }
 
             // find the sub nodes in this multi block that correspond to this header.
-            logger.warn("Before query to sublist");
-            logger.warn(subNodeOffsetForCandidate);
-            logger.warn(candidateMultiPageBlockHeader.getCountForNode());
             // we cache the inNext value to continue the loop as the block header could be transformed by the split.
             multiPageBlockHeaderInNext = candidateMultiPageBlockHeader.inNext;
             List<Integer> subNodes = currentNode.getSubNodes().subList(subNodeOffsetForCandidate,
@@ -291,8 +257,6 @@ public class MultiPageBlockHeader extends Debuggable {
                 if (currentNode == node) {
                     returnMultiPageBlockHeader = candidateMultiPageBlockHeader;
                 }
-                logger.warn("mpbh prior to split");
-                logger.warn(candidateMultiPageBlockHeader);
             } else {
                 int remaining;
                 // if there are more MPB headers after this, setup the flags accordingly.
@@ -307,8 +271,6 @@ public class MultiPageBlockHeader extends Debuggable {
                     if (currentNode == node) {
                         returnMultiPageBlockHeader = candidateMultiPageBlockHeader;
                     }
-                    logger.warn("mpbh after the split mpbh");
-                    logger.warn(candidateMultiPageBlockHeader);
                 } else {
                     MultiPageBlockHeader copySplitMultiPageBlockHeader = splitMultiPageBlockHeader.copy();
                     remaining = sumCountNodesForMultiPageBlock - splitSize;
@@ -322,9 +284,6 @@ public class MultiPageBlockHeader extends Debuggable {
                         currentNode.adjustMergeMultiPageBlockHeaderCursor();
                         returnMultiPageBlockHeader = currentNode.getMultiPageBlockHeaderAtCursor(0);
                     }
-                    logger.warn("mpbh befor and after the splits");
-                    logger.warn(candidateMultiPageBlockHeader);
-                    logger.warn(copySplitMultiPageBlockHeader);
                 }
                 // This is for future MPB headers for this block.
                 hasPreviousSecondHalf = true;
@@ -350,8 +309,6 @@ public class MultiPageBlockHeader extends Debuggable {
             if (currentNode != node) {
                 currentNode.persistNodeInformation();
             }
-            logger.warn("current node after mpbh split adjustments");
-            logger.warn(currentNode);
             // we should split here itself, as we can identify from which node the split will be applicable.
             if (multiPageBlockHeaderInNext) {
                 if (currentNode == node) {
@@ -360,7 +317,6 @@ public class MultiPageBlockHeader extends Debuggable {
                 currentNode = currentNode.getNextNode();
             }
         } while (multiPageBlockHeaderInNext);
-        logger.warn("mpbh splitting done");
 
         return returnMultiPageBlockHeader;
     }

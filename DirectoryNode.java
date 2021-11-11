@@ -174,8 +174,7 @@ public class DirectoryNode extends Node {
     }
 
     int splitMultiPageBlockHeader(MultiPageBlockHeader nodeMultiPageBlockHeader, DirectoryNode sibling, boolean insertAfter) throws Exception {
-        logger.warn("Multipage blocks are splitting");
-        logger.warn(nodeMultiPageBlockHeader);
+        logger.info("Multipage blocks are splitting");
         int siblingPageNumber;
         MultiPageBlockHeader siblingMultiPageBlockHeader = nodeMultiPageBlockHeader.split(this, insertAfter);
         MultiPageBlock nodeMultiPageBlock = MultiPageBlock.get(nodeMultiPageBlockHeader);
@@ -292,10 +291,6 @@ public class DirectoryNode extends Node {
         if (mergeSubNodeCursor < median) {
             setupNodeInformation(leftSubNodes, leftSeperatorKeys, leftMultiPageBlockHeaders);
             sibling.setupNodeInformation(rightSubNodes, rightSeperatorKeys, rightMultiPageBlockHeaders);
-            logger.warn("splitting :: cursor before median. part 1");
-            logger.info(this);
-            logger.info(sibling);
-            logger.info(parent);
             // insert the sibling correctly into the parent directory node.
             // right sibling needs to be in the same multi page block as the node if there is a following node in same mpb.
             if (parent != null) {
@@ -303,17 +298,9 @@ public class DirectoryNode extends Node {
             } else {
                 makeNewRoot(this, sibling, medianSeperatorKey, 0);
             }
-            logger.info("splitting :: cursor before median. part 2");
-            logger.info(this);
-            logger.info(sibling);
-            logger.info(parent);
         } else {
             setupNodeInformation(rightSubNodes, rightSeperatorKeys, rightMultiPageBlockHeaders);
             sibling.setupNodeInformation(leftSubNodes, leftSeperatorKeys, leftMultiPageBlockHeaders);
-            logger.warn("splitting :: cursor after median. part 1");
-            logger.info(this);
-            logger.info(sibling);
-            logger.info(parent);
             // update the merge subnode cursor.
             adjustMergeCursor(-sibling.getSubNodes().size());
             if (parent != null) {
@@ -321,19 +308,11 @@ public class DirectoryNode extends Node {
             } else {
                 makeNewRoot(sibling, this, medianSeperatorKey, 1);
             }
-            logger.info("splitting :: cursor after median. part 2");
-            logger.info(this);
-            logger.info(sibling);
-            logger.info(parent);
         }
 
         if (parent != null && parent.shouldSplit()) {
-            logger.warn("Splitting parent as well.");
-            logger.info(parent);
             parent.split();
             parent.writeToMultiPageBlockAtCursor();
-            logger.info("Splitting parent as well done.");
-            logger.info(parent);
         }
 
         return sibling;
@@ -361,12 +340,10 @@ public class DirectoryNode extends Node {
 
         offsetMap.put(candidateParent, previousOffset);
 
-        logger.warn("getPreviousNode:: Reading from offset " + previousOffset + " for parent " + candidateParent);
         MultiPageBlockHeader multiPageBlockHeader = candidateParent.getMultiPageBlockHeader(previousOffset);
         MultiPageBlock multiPageBlock = MultiPageBlock.get(multiPageBlockHeader);
         int previousNodePageOffset = candidateParent.subNodes.get(previousOffset);
 
-        logger.warn("getPreviousNode Reading from multiblockpage " + multiPageBlock + ":" + multiPageBlockHeader.getMultiPageBlockNumber() + " for page " +  previousNodePageOffset);
         return (DirectoryNode) Node.read(multiPageBlock.getPageBuffer(previousNodePageOffset), candidateParent);
     }
 
@@ -389,12 +366,10 @@ public class DirectoryNode extends Node {
 
         offsetMap.put(candidateParent, nextOffset);
 
-        logger.warn("getNextNode:: Reading from offset " + nextOffset + " for parent " + candidateParent);
         MultiPageBlockHeader multiPageBlockHeader = candidateParent.getMultiPageBlockHeader(nextOffset);
         MultiPageBlock multiPageBlock = MultiPageBlock.get(multiPageBlockHeader);
         Integer nextNodePageOffset = candidateParent.subNodes.get(nextOffset);
 
-        logger.warn("getNextNode Reading from multiblockpage " + multiPageBlock + ":" + multiPageBlockHeader.getMultiPageBlockNumber() + " for page " +  nextNodePageOffset);
         return (DirectoryNode) Node.read(multiPageBlock.getPageBuffer(nextNodePageOffset), candidateParent);
     }
 
@@ -435,9 +410,6 @@ public class DirectoryNode extends Node {
             for (int i = 0; i < multiPageBlockHeader.getCountForNode(); i++, subNodeIndex++)  {
                 bb.putInt(subNodes.get(subNodeIndex));
                 if (subNodeIndex < subNodes.size() - 1) {
-                    if (seperatorKeys.get(subNodeIndex).equals("")) {
-                        logger.info("ser found empty string.");
-                    }
                     Utils.serializeString(bb, seperatorKeys.get(subNodeIndex));
                 }
             }
@@ -459,9 +431,6 @@ public class DirectoryNode extends Node {
                 directoryNode.subNodes.add(bb.getInt());
                 if (nodesAdded < numSubNodes - 1) {
                     String seperatorKey = Utils.deserializeString(bb);
-                    if (seperatorKey.equals("")) {
-                        logger.info("deser found empty string.");
-                    }
                     directoryNode.seperatorKeys.add(seperatorKey);
                 }
             }
@@ -567,7 +536,6 @@ public class DirectoryNode extends Node {
     }
 
     void writeToMultiPageBlock(MultiPageBlock multiPageBlock, int pageOffset) throws Exception {
-        logger.info("Writing " + this + " to multi page block " + multiPageBlock  + " to page " + pageOffset);
         ByteBuffer bb = multiPageBlock.getPageBuffer(pageOffset);
         serialize(bb);
     }
