@@ -12,7 +12,7 @@ public class MemoryComponent {
     NavigableMap<String, String> dataMap = new ConcurrentSkipListMap<>();
     static MemoryComponent memoryComponentInstance;
     // Lets keep threshold fixed for now.
-    static final int MEMORY_THRESHOLD = 100;
+    static final int MEMORY_THRESHOLD = 0;
     private MemoryComponent() {
     }
 
@@ -41,8 +41,13 @@ public class MemoryComponent {
         }
         if (endKey == null) {
             endKey = dataMap.lastKey();
+            if (startKey != null && startKey.compareTo(endKey) > 0) {
+                return new ArrayList<>();
+            }
         }
 
+        logger.debug(startKey);
+        logger.debug(endKey);
         Map<String, String> removedMap = dataMap.subMap(startKey, startKeyInclusive, endKey, true);
         List<KeyData> removedBatch = new ArrayList<>();
 

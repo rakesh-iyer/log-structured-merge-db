@@ -4,6 +4,8 @@ import lombok.Setter;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 import org.apache.log4j.Logger;
@@ -16,10 +18,18 @@ public class LevelMerge extends Thread {
     String nextKey;
     List<MultiPageBlock> fillingBlocks = new ArrayList<>();
     LeafNode currentFillingLeaf;
-    LeafNode previousEmptyingLeaf;
+    String previousEmptyingLeafEndKey;
     MultiPageBlockHeader currentFillingMultiPageBlockHeader;
     DirectoryNode currentMergingNode;
     List<Integer> mergePath = new ArrayList<>();
+    boolean mergeStopped;
+
+    @Getter @Setter
+    static class LeafProcessing extends Debuggable{
+        String startKey;
+        String endKey;
+        LeafNode leafNode;
+    }
 
     LeafNode getNextFillingLeaf(DirectoryNode parent) throws Exception {
         // persist the current filling leaf.
@@ -66,6 +76,7 @@ public class LevelMerge extends Thread {
             } else {
                 mergingEntry = null;
             }
+            logger.debug("Initial Merging key - " + fillingEntry.getKey() + ":" + (currentFillingLeaf == null ? "null":currentFillingLeaf.getStartKey()));
             if (currentFillingLeaf == null || currentFillingLeaf.isFull()) {
                 // find the next filling leaf and add it to the root.
                 // not much risk of root spilling here. as we can control initial merge to be less than a multiblock.
@@ -95,7 +106,7 @@ public class LevelMerge extends Thread {
         DirectoryNode root = DirectoryNode.getRoot();
 
         // clear the filling blocks and reset the current filling leaf.
-        previousEmptyingLeaf = null;
+        previousEmptyingLeafEndKey = null;
         currentFillingLeaf = null;
         fillingBlocks.clear();
 
@@ -103,24 +114,11 @@ public class LevelMerge extends Thread {
         root.resetMergeCursor();
     }
 
-    List<KeyData> getKeyForRange(LeafNode startLeaf, LeafNode leaf) {
+    List<KeyData> getKeyForRange(String startKey, String endKey) {
         // we need to identify the previous leaf so the range captured includes keys after the endKey of previous leaf.
         // we also need to know if this is the last leaf so as to encompass the rest of the range.
         // remove the keys in the overlapping key range from earlier component.
-        String rangeStartKey, rangeEndKey;
-        if (startLeaf != null) {
-            rangeStartKey = startLeaf.getEndKey();
-        } else {
-            rangeStartKey = null;
-        }
-
-        if (!isLastEmptyingLeaf(leaf)) {
-            rangeEndKey = leaf.getEndKey();
-        } else {
-            rangeEndKey = null;
-        }
-
-        return memoryComponent.removeKeyDataForMerge(rangeStartKey, rangeEndKey);
+        return memoryComponent.removeKeyDataForMerge(startKey, endKey);
     }
 
     void writeCurrentFillingLeaf() throws Exception {
@@ -137,9 +135,12 @@ public class LevelMerge extends Thread {
     void doMergeStep() throws Exception {
         // remove the emptying leaf node from the directory node, but leave the seperator if any exists, so it could be
         // used to seperate the filling leaf that will be subsequently added.
-        LeafNode emptyingLeaf = removeNextLeafForMerge();
+        LeafProcessing leafProcessing = removeNextLeafForMerge();
+        LeafNode emptyingLeaf = leafProcessing.leafNode;
         DirectoryNode parent = emptyingLeaf.getParent();
-        List<KeyData> mergingList = getKeyForRange(previousEmptyingLeaf, emptyingLeaf);
+        List<KeyData> mergingList = getKeyForRange(leafProcessing.startKey, leafProcessing.endKey);
+        logger.debug("new merge step merging list size:: " + mergingList.size());
+        logger.debug("new merge step key data list size:: " + emptyingLeaf.keyDataList.size());
         // iterate through the data to do the merge.
         Iterator<KeyData> emptyingIterator = emptyingLeaf.getKeyDataList().iterator();
         Iterator<KeyData> mergingIterator = mergingList.iterator();
@@ -162,7 +163,7 @@ public class LevelMerge extends Thread {
                 mergingEntry = mergingIterator.hasNext() ? mergingIterator.next() : null;
                 emptyingEntry = emptyingIterator.hasNext() ? emptyingIterator.next() : null;
             }
-
+            logger.debug("Merging key - " + fillingEntry.getKey() + ":" + (currentFillingLeaf == null ? "null":currentFillingLeaf.getStartKey()));
 
             if (currentFillingLeaf == null || currentFillingLeaf.isFull()) {
                 currentFillingLeaf = getNextFillingLeaf(parent);
@@ -171,6 +172,7 @@ public class LevelMerge extends Thread {
                 // If the filling page is the first one, then there is no need to add a seperator.
                 MultiPageBlock fillingBlock = getFillingBlock();
                 parent.insertSubNodeAtCursor(fillingBlock.getActivePages(), fillingEntry.getKey(), 0);
+                logger.debug(parent);
                 // update the active pages and count corresponding to the multi page block.
                 fillingBlock.incrementActivePages();
 
@@ -197,7 +199,8 @@ public class LevelMerge extends Thread {
                     DirectoryNode sibling = parent.split();
 
                     if (!parent.isMultiPageBlockHeaderPresent(fillingMultiPageBlockHeader.getMultiPageBlockNumber())) {
-                        MultiPageBlockHeader copyFillingMultiPageBlockHeader = parent.copyAndSetupMultiPageBlockHeader(fillingMultiPageBlockHeader, 1);
+                        logger.debug("splitting on filling page.");
+/*                        MultiPageBlockHeader copyFillingMultiPageBlockHeader = parent.copyAndSetupMultiPageBlockHeader(fillingMultiPageBlockHeader, 1);
                         currentFillingMultiPageBlockHeader = copyFillingMultiPageBlockHeader;
 
                         // we are splitting right on the filling page just added, so move it to this node.
@@ -209,7 +212,9 @@ public class LevelMerge extends Thread {
                         String currentParentSeperatorKey = parent.getParent().getSeperatorKeys().set(parent.getParent().mergeSubNodeCursor - 1, newParentSeperatorKey);
                         // Add the subnode and median seperator key to the emptying leafs parent node.
                         parent.insertSubNodeAtCursor(fillingPage, currentParentSeperatorKey, 1);
-                        sibling.writeToMultiPageBlock(-1);
+                        sibling.writeToMultiPageBlock(-1);*/
+
+                        splitOnFillingPage(parent, sibling, fillingMultiPageBlockHeader);
                     }
                 }
             }
@@ -233,14 +238,53 @@ public class LevelMerge extends Thread {
         }
 
         // setup previous emptying leaf for next merge step, so as to query the appropriate range.
-        // I think the previous end key should have sufficed.
-        previousEmptyingLeaf = emptyingLeaf;
+        previousEmptyingLeafEndKey = emptyingLeaf.getEndKey();
+    }
+
+    void splitOnFillingPage(DirectoryNode parent, DirectoryNode sibling, MultiPageBlockHeader fillingMultiPageBlockHeader) throws Exception {
+        MultiPageBlockHeader copyFillingMultiPageBlockHeader = parent.copyAndSetupMultiPageBlockHeader(fillingMultiPageBlockHeader, 1);
+        currentFillingMultiPageBlockHeader = copyFillingMultiPageBlockHeader;
+
+        // we are splitting right on the filling page just added, so move it to this node.
+        int lastSiblingIndex = sibling.getSubNodes().size() - 1;
+        MultiPageBlockHeader siblingMultiPageBlockHeader = sibling.getMultiPageBlockHeader(lastSiblingIndex);
+        Integer fillingPage = sibling.getSubNodes().remove(lastSiblingIndex);
+        siblingMultiPageBlockHeader.decrementCountForNode();
+        String newParentSeperatorKey = sibling.getSeperatorKeys().remove(sibling.getSeperatorKeys().size() - 1);
+        String currentParentSeperatorKey = parent.getParent().getSeperatorKeys().set(parent.getParent().mergeSubNodeCursor - 1, newParentSeperatorKey);
+        // Add the subnode and median seperator key to the emptying leafs parent node.
+        parent.insertSubNodeAtCursor(fillingPage, currentParentSeperatorKey, 1);
+        sibling.writeToMultiPageBlock(-1);
+    }
+
+    String getStartKeyforFillingRange(DirectoryNode leafParent) {
+        DirectoryNode currentNode = leafParent;
+        while (currentNode != null && currentNode.cursorAtStart()) {
+            currentNode = currentNode.parent;
+        }
+        if (currentNode == null) {
+            return null;
+        } else {
+            return currentNode.getSeperatorKeys().get(currentNode.mergeSubNodeCursor - 1);
+        }
+    }
+
+    String getEndKeyforFillingRange(DirectoryNode leafParent) {
+        DirectoryNode currentNode = leafParent;
+        while (currentNode != null && currentNode.cursorSeperatorAtEnd()) {
+            currentNode = currentNode.parent;
+        }
+        if (currentNode == null) {
+            return null;
+        } else {
+            return currentNode.getSeperatorKeys().get(currentNode.mergeSubNodeCursor);
+        }
     }
 
     // TODO::
     // Traversing from root down to leaf on every occasion, if number of levels are low this is cheap.
     // but is this necessary for correctness or is it redundant?
-    LeafNode removeNextLeafForMerge() throws Exception {
+    LeafProcessing removeNextLeafForMerge() throws Exception {
         DirectoryNode node;
         if (currentMergingNode != null) {
             node = currentMergingNode;
@@ -262,14 +306,19 @@ public class LevelMerge extends Thread {
                 // This however is simpler as it addresses correct setting for all possible scenarios.
                 mergePath.add(node.getMergeSubNodeCursor());
                 currentMergingNode = node;
-                node.removeSubNodeAtCursor();
+                LeafProcessing leafProcessing = new LeafProcessing();
+                String startKey = getStartKeyforFillingRange(node);
+                String endKey =  getEndKeyforFillingRange(node);
+                leafProcessing.setStartKey(startKey);
+                leafProcessing.setEndKey(endKey);
 
+                node.removeSubNodeAtCursor();
+                leafProcessing.setLeafNode((LeafNode)child);
+
+//                logger.warn(leafProcessing);
                 logMergePath(mergePath);
 
-                if (previousEmptyingLeaf != null && previousEmptyingLeaf.keyDataList.get(previousEmptyingLeaf.keyDataList.size()-1).getKey().compareTo(((LeafNode) child).keyDataList.get(((LeafNode) child).keyDataList.size() - 1).getKey()) > 0) {
-                    logger.info("anamolous condition caught before execution.");
-                }
-                return (LeafNode)child;
+                return leafProcessing;
             } else if (child == null) {
                 // dont reset the merge cursor for the node for the next time we query it.
                 // if this is not the root, restart search from the parent with incremented merge cursor.
@@ -290,17 +339,17 @@ public class LevelMerge extends Thread {
     }
 
     void logMergePath(List<Integer> mergePath){
-        logger.warn("Next step in merge is as follows");
+        logger.debug("Next step in merge is as follows");
         StringBuilder stringBuilder = new StringBuilder();
         for (Integer element : mergePath) {
             stringBuilder.append(element);
             stringBuilder.append(":");
         }
-        logger.warn(stringBuilder.toString());
+        logger.debug(stringBuilder.toString());
     }
 
     public void run() {
-        while (true) {
+        while (!isMergeStopped()) {
             try {
                 // check if threshold is exceeded.
                 if (memoryComponent.exceedsThreshold()) {
@@ -308,13 +357,13 @@ public class LevelMerge extends Thread {
                         logger.info("Doing initial merge.");
                         doInitialMerge();
                     } else {
-                        logger.info("Running merge.");
+                        logger.debug("Running merge.");
                         doMergeStep();
                     }
-                    logger.info("Root");
-                    logger.info(DirectoryNode.getRoot());
+                    logger.debug("Root");
+                    logger.debug(DirectoryNode.getRoot());
                 }
-                logger.info("Sleeping for 1 second in merge.");
+                logger.debug("Sleeping for 1 second in merge.");
                 Thread.sleep(1000);
             } catch (Exception e) {
                 logger.info("Merge Step caused exception is this retryable??");
@@ -322,6 +371,10 @@ public class LevelMerge extends Thread {
                 break;
             }
         }
+    }
+
+    public void stopMerge() {
+        mergeStopped = true;
     }
 }
 

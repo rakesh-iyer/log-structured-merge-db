@@ -78,7 +78,7 @@ public class MultiPageBlockHeader extends Debuggable {
     void updateCount(DirectoryNode node, boolean increment) throws Exception {
         DirectoryNode currentNode = node;
         int offsetFromSelectedNode = 0;
-        logger.info(String.format("update count for %s as increment:%s", node, increment));
+        logger.debug(String.format("update count for %s as increment:%s", node, increment));
         // Reset the offset map before doing this increment.
         // This means you cannot do 2 splits at the same time. This might not be a major bottleneck.
         DirectoryNode.resetOffsetMap();

@@ -20,8 +20,8 @@ public class DirectoryNode extends Node {
     List<MultiPageBlockHeader> multiPageBlockHeaders = new ArrayList<>();
     List<Integer> subNodes = new ArrayList<>();
     List<String> seperatorKeys = new ArrayList<>();
-    Integer mergeSubNodeCursor = 0;
-    Integer mergeMultiPageBlockHeaderCursor = 0;
+    int mergeSubNodeCursor = 0;
+    int mergeMultiPageBlockHeaderCursor = 0;
     static final int DIRECTORY_NODE_IDENTIFIER = 1;
     static final int MAX_KEYS = 10;
     DirectoryNode parent;
@@ -111,16 +111,24 @@ public class DirectoryNode extends Node {
         // We only remove the previous seperator key if it exists as that corresponds to the first key of the node being removed.
         // this ensures the invariant when the subnodes added only add seperators corresponding to their first key.
         // The reason for this is the fact that sibling nodes may not be present in memory so querying them is inefficient.
-        subNodes.remove(mergeSubNodeCursor.intValue());
+        subNodes.remove(mergeSubNodeCursor);
         if (mergeSubNodeCursor != 0) {
-            seperatorKeys.remove(mergeSubNodeCursor.intValue() - 1);
+            seperatorKeys.remove(mergeSubNodeCursor - 1);
         }
 
         removeSubNodeFromMultiPageBlock();
     }
 
+    boolean cursorAtStart() {
+        return mergeSubNodeCursor == 0;
+    }
+
     boolean cursorAtEnd() {
         return mergeSubNodeCursor >= subNodes.size();
+    }
+
+    boolean cursorSeperatorAtEnd() {
+        return mergeSubNodeCursor >= seperatorKeys.size();
     }
 
     boolean isEmpty() {
@@ -463,14 +471,16 @@ public class DirectoryNode extends Node {
         int i;
         // the key cannot be found here, all you can do is direct this to the correct leaf or directory.
         for (i = 0; i < seperatorKeys.size(); i++) {
-            if (seperatorKeys.get(i).compareTo(key) < 0) {
+            if (seperatorKeys.get(i).compareTo(key) > 0) {
                 break;
             }
         }
 
         try {
+            MultiPageBlockHeader multiPageBlockHeader = getMultiPageBlockHeader(i);
+            int nodeOffset = subNodes.get(i);
             // load subnode[i] into memory and search there.
-            return Node.read(getMultiPageBlockHeader(i), subNodes.get(i), this).search(key);
+            return Node.read(multiPageBlockHeader, nodeOffset, this).search(key);
         } catch (Exception e) {
             return null;
         }
@@ -593,5 +603,22 @@ public class DirectoryNode extends Node {
         MultiPageBlockHeader multiPageBlockHeader = parent.getMultiPageBlockHeader(offset);
         int nodePageOffset = parent.getSubNodes().get(offset);
         writeToMultiPageBlock(MultiPageBlock.get(multiPageBlockHeader), nodePageOffset);
+    }
+
+    Node readSubNode(int index) throws Exception {
+        MultiPageBlockHeader multiPageBlockHeader = getMultiPageBlockHeader(index);
+        int nodeOffset = subNodes.get(index);
+        // load subnode[i] into memory and search there.
+        return Node.read(multiPageBlockHeader, nodeOffset, this);
+    }
+
+    void inorder() throws Exception {
+        int i;
+
+        for (i = 0; i < seperatorKeys.size(); i++) {
+            readSubNode(i).inorder();
+            logger.info(seperatorKeys.get(i));
+        }
+        readSubNode(i).inorder();
     }
 }

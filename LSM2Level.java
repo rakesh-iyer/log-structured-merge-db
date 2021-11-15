@@ -1,16 +1,20 @@
+import org.apache.log4j.Logger;
+
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class LSM2Level {
+    static Logger logger = Logger.getLogger(LSM2Level.class);
     MemoryComponent memoryComponent = MemoryComponent.getInstance();
-    DirectoryNode root;
     static LevelMerge levelMerge = new LevelMerge();
+    static final int MAX_ITERATIONS = 10;
+    static final int KEYS_PER_ITERATION = 101;
 
     LSM2Level() {
-        if (Files.exists(Paths.get(DirectoryNode.ROOT_FILE_NAME))) {
-            root = DirectoryNode.getRoot();
-        } else {
-            root = new DirectoryNode(null);
+        if (!Files.exists(Paths.get(DirectoryNode.ROOT_FILE_NAME))) {
+            DirectoryNode root = new DirectoryNode(null);
             DirectoryNode.setRoot(root);
             DirectoryNode.writeRoot();
         }
@@ -34,7 +38,11 @@ public class LSM2Level {
             return data;
         }
 
-        return root.search(key);
+        return DirectoryNode.getRoot().search(key);
+    }
+
+    void inorder() throws Exception {
+        DirectoryNode.getRoot().inorder();
     }
 
     public static void main(String args[]) throws Exception {
@@ -43,20 +51,38 @@ public class LSM2Level {
 
         String key = "key";
         String data = "data";
-
-        int i = 0;
-        while (true) {
-            for (int j = 0 ; j < 101; j++, i++) {
-                lsm.insert(key + i, data + i);
+        for (int iterations = 0, startIndex = 0; iterations < MAX_ITERATIONS; iterations++) {
+            for (int j = 0 ; j < KEYS_PER_ITERATION; j++, startIndex++) {
+                logger.debug("Inserting " + (key + startIndex));
+                lsm.insert(key + startIndex, data + startIndex);
             }
-/*
-            for (int j = 0; i < 101; i++) {
-                System.out.println(lsm.search(key + i));
-            }
-*/
-            Thread.sleep(2000);
+            Thread.sleep(5000);
         }
 
-    }
+        Thread.sleep(60000);
 
+        levelMerge.stopMerge();
+
+        Thread.sleep(60000);
+
+//        lsm.inorder();
+
+        for (int iterations = 0, startIndex = 0; iterations < MAX_ITERATIONS; iterations++) {
+            int keysFound = 0;
+            for (int j = 0 ; j < KEYS_PER_ITERATION; j++, startIndex++) {
+                String result = lsm.search(key + startIndex);
+                if (result == null || !result.equals(data + startIndex)) {
+                    logger.info("Did not find the key " + (key + startIndex) + ":" + result);
+                } else {
+                    keysFound++;
+                }
+            }
+
+            if (keysFound == KEYS_PER_ITERATION) {
+                logger.info("This was a successful iteration.");
+            } else {
+                logger.info(String.format("Found %s keys.", keysFound));
+            }
+        }
+    }
 }

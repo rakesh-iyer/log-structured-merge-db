@@ -1,6 +1,7 @@
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.log4j.Logger;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -9,6 +10,7 @@ import java.util.List;
 
 @Getter @Setter
 public class LeafNode extends Node {
+    static Logger logger = Logger.getLogger(LeafNode.class);
     int maxSize;
     static final int LEAF_NODE_IDENTIFIER = 2;
     static final int MAX_KEYS = 20;
@@ -76,5 +78,11 @@ public class LeafNode extends Node {
         ByteBuffer bb = multiPageBlock.getPageBuffer(pageOffset);
 
         serialize(bb);
+    }
+
+    void inorder() {
+        for (KeyData keyData: keyDataList) {
+            logger.info(keyData.getKey());
+        }
     }
 }

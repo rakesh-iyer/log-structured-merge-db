@@ -4,7 +4,7 @@ import java.nio.ByteBuffer;
 
 abstract public class Node extends Debuggable {
     static final int PAGE_SIZE = 4096;
-    static Node read(MultiPageBlockHeader multiPageBlockHeader, int pageNumber, DirectoryNode parent) throws Exception {
+/*    static Node read(MultiPageBlockHeader multiPageBlockHeader, int pageNumber, DirectoryNode parent) throws Exception {
         String multiPageBlockFileName =  multiPageBlockHeader.getMultiPageBlockNumber() + ".mpb";
         FileInputStream file = new FileInputStream(new File(multiPageBlockFileName));
 
@@ -22,6 +22,13 @@ abstract public class Node extends Debuggable {
             default:
                 throw new Exception("Invalid node type.");
         }
+    }
+*/
+    static Node read(MultiPageBlockHeader multiPageBlockHeader, int pageNumber, DirectoryNode parent) throws Exception {
+        MultiPageBlock multiPageBlock = MultiPageBlock.get(multiPageBlockHeader);
+        ByteBuffer byteBuffer = multiPageBlock.getPageBuffer(pageNumber);
+
+        return read(byteBuffer, parent);
     }
 
     static Node read(ByteBuffer byteBuffer, DirectoryNode parent) throws Exception {
@@ -45,4 +52,6 @@ abstract public class Node extends Debuggable {
     abstract String search(String key) throws Exception;
 
     abstract String getStartKey() throws Exception;
+
+    abstract void inorder() throws Exception;
 }
