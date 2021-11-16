@@ -66,15 +66,21 @@ public class DirectoryNode extends Node {
     void removeSubNodeFromMultiPageBlock() throws Exception {
         MultiPageBlockHeader multiPageBlockHeader = getMultiPageBlockHeaderAtCursor(0);
         // lets revisit if we need to uncomment this.
-//        multiPageBlockHeader.updateCount(this, false);
+        multiPageBlockHeader.updateCount(this, false);
         multiPageBlockHeader.decrementCountForNode();
         if (multiPageBlockHeader.isEmptyForNode()) {
+            // We do this because adjustMergeMultiPageBlockHeaderCursor only functions when merge cursor is valid.
+            int index = multiPageBlockHeaders.indexOf(multiPageBlockHeader);
             multiPageBlockHeaders.remove(multiPageBlockHeader);
+            if (mergeMultiPageBlockHeaderCursor >= index) {
+                mergeMultiPageBlockHeaderCursor--;
+            }
+
             if (multiPageBlockHeader.inNext) {
-                removeInPreviousForNextNode(multiPageBlockHeader);
+                removeMultiPageBlockHeaderForNextNode(multiPageBlockHeader);
             }
             if (multiPageBlockHeader.inPrevious) {
-                removeInNextForPreviousNode(multiPageBlockHeader);
+                removeMultiPageBlockHeaderForPreviousNode(multiPageBlockHeader);
             }
         }
     }
@@ -105,6 +111,34 @@ public class DirectoryNode extends Node {
             }
         }
         nextNode.persistNodeInformation();
+    }
+
+    void removeMultiPageBlockHeaderForNextNode(MultiPageBlockHeader multiPageBlockHeader) throws Exception {
+        DirectoryNode.resetOffsetMap();
+
+        DirectoryNode nextNode = getNextNode();
+        Iterator<MultiPageBlockHeader> multiPageBlockHeaderIterator = nextNode.getMultiPageBlockHeaders().iterator();
+        for (; multiPageBlockHeaderIterator.hasNext();) {
+            MultiPageBlockHeader candidateMultiPageBlockHeader = multiPageBlockHeaderIterator.next();
+            if (candidateMultiPageBlockHeader.getMultiPageBlockNumber() == multiPageBlockHeader.getMultiPageBlockNumber()) {
+                multiPageBlockHeaderIterator.remove();
+            }
+        }
+        nextNode.persistNodeInformation();
+    }
+
+    void removeMultiPageBlockHeaderForPreviousNode(MultiPageBlockHeader multiPageBlockHeader) throws Exception {
+        DirectoryNode.resetOffsetMap();
+
+        DirectoryNode previousNode = getPreviousNode();
+        Iterator<MultiPageBlockHeader> multiPageBlockHeaderIterator = previousNode.getMultiPageBlockHeaders().iterator();
+        for (; multiPageBlockHeaderIterator.hasNext();) {
+            MultiPageBlockHeader candidateMultiPageBlockHeader = multiPageBlockHeaderIterator.next();
+            if (candidateMultiPageBlockHeader.getMultiPageBlockNumber() == multiPageBlockHeader.getMultiPageBlockNumber()) {
+                multiPageBlockHeaderIterator.remove();
+            }
+        }
+        previousNode.persistNodeInformation();
     }
 
     void removeSubNodeAtCursor() throws Exception {
@@ -282,6 +316,7 @@ public class DirectoryNode extends Node {
 
             leftSplittingMultiPageBlockHeader.adjustCountForNode(splitSubNodeCount);
             rightSplittingMultiPageBlockHeader.setCountForNode(splitSubNodeCount);
+            // could we just use the set method here.
             leftMultiPageBlockHeaders.remove(index);
             rightMultiPageBlockHeaders.remove(0);
             leftMultiPageBlockHeaders.add(leftSplittingMultiPageBlockHeader);
@@ -398,7 +433,13 @@ public class DirectoryNode extends Node {
     }
 
     void insertMultiPageBlockHeaderAtCursor(MultiPageBlockHeader multiPageBlockHeader) {
-        multiPageBlockHeaders.add(mergeMultiPageBlockHeaderCursor, multiPageBlockHeader);
+        // if sub-node cursor has processed all the nodes, the new mpbh should be inserted after the cursor mpbh.
+        // else it is inserted before the cursor mpbh.
+        if (subNodes.size() > 0 && mergeSubNodeCursor >= subNodes.size()) {
+            multiPageBlockHeaders.add(multiPageBlockHeader);
+        } else {
+            multiPageBlockHeaders.add(mergeMultiPageBlockHeaderCursor, multiPageBlockHeader);
+        }
         mergeMultiPageBlockHeaderCursor++;
     }
 
@@ -415,7 +456,10 @@ public class DirectoryNode extends Node {
         // it is best to save the seperator in the directory node, so you do not need to read the MPB.
         for (MultiPageBlockHeader multiPageBlockHeader: multiPageBlockHeaders) {
             multiPageBlockHeader.serialize(bb);
-            for (int i = 0; i < multiPageBlockHeader.getCountForNode(); i++, subNodeIndex++)  {
+            for (int i = 0; multiPageBlockHeader.getCountForNode() > 0 && i < multiPageBlockHeader.getCountForNode(); i++, subNodeIndex++)  {
+                if (subNodeIndex >= subNodes.size()) {
+                    logger.info("");
+                }
                 bb.putInt(subNodes.get(subNodeIndex));
                 if (subNodeIndex < subNodes.size() - 1) {
                     Utils.serializeString(bb, seperatorKeys.get(subNodeIndex));

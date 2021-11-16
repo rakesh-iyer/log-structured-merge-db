@@ -27,6 +27,21 @@ public class MemoryComponent {
         return dataMap.size() > MEMORY_THRESHOLD;
     }
 
+    List<KeyData> removeEntries(int maxEntries) {
+        List<KeyData> removedBatch = new ArrayList<>();
+
+        for (Map.Entry<String, String> entry: dataMap.entrySet()) {
+            removedBatch.add(new KeyData(entry.getKey(), entry.getValue()));
+            dataMap.remove(entry.getKey());
+
+            if (removedBatch.size() >= maxEntries) {
+                break;
+            }
+        }
+
+        return removedBatch;
+    }
+
     List<KeyData> removeKeyDataForMerge(String startKey, String endKey) {
         // startKey if non null is non inclusive as it is the previous node's end key and so is already in a valid range.
         boolean startKeyInclusive = false;

@@ -9,7 +9,7 @@ public class LSM2Level {
     static Logger logger = Logger.getLogger(LSM2Level.class);
     MemoryComponent memoryComponent = MemoryComponent.getInstance();
     static LevelMerge levelMerge = new LevelMerge();
-    static final int MAX_ITERATIONS = 10;
+    static final int MAX_ITERATIONS = 100;
     static final int KEYS_PER_ITERATION = 101;
 
     LSM2Level() {
@@ -56,14 +56,13 @@ public class LSM2Level {
                 logger.debug("Inserting " + (key + startIndex));
                 lsm.insert(key + startIndex, data + startIndex);
             }
-            Thread.sleep(5000);
         }
 
-        Thread.sleep(60000);
+        Thread.sleep(10000);
 
         levelMerge.stopMerge();
 
-        Thread.sleep(60000);
+        Thread.sleep(10000);
 
 //        lsm.inorder();
 

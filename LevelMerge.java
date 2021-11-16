@@ -23,6 +23,8 @@ public class LevelMerge extends Thread {
     DirectoryNode currentMergingNode;
     List<Integer> mergePath = new ArrayList<>();
     boolean mergeStopped;
+    // We do not want the root to split on initial merge so limit the amount of data.
+    static final int MAX_INITIAL_ENTRIES = 100;
 
     @Getter @Setter
     static class LeafProcessing extends Debuggable{
@@ -64,7 +66,7 @@ public class LevelMerge extends Thread {
     // We do an initial merge to populate the root asap.
     void doInitialMerge() throws Exception {
         DirectoryNode root = DirectoryNode.getRoot();
-        List<KeyData> mergingList = memoryComponent.removeKeyDataForMerge(null, null);
+        List<KeyData> mergingList = memoryComponent.removeEntries(MAX_INITIAL_ENTRIES);
 
         Iterator<KeyData> mergingIterator = mergingList.iterator();
         KeyData mergingEntry = mergingIterator.next();
@@ -100,6 +102,7 @@ public class LevelMerge extends Thread {
         // when do dirty multi page blocks get written back to disk.
         // we possibly need to identify how to recover as well.
         DirectoryNode.writeRoot();
+        logger.info("Initial merge completed.");
     }
 
     void reinitializeMergeState() {
@@ -138,6 +141,8 @@ public class LevelMerge extends Thread {
         LeafProcessing leafProcessing = removeNextLeafForMerge();
         LeafNode emptyingLeaf = leafProcessing.leafNode;
         DirectoryNode parent = emptyingLeaf.getParent();
+        logger.debug("emptying Leaf " + emptyingLeaf);
+        logger.debug("parent " + parent);
         List<KeyData> mergingList = getKeyForRange(leafProcessing.startKey, leafProcessing.endKey);
         logger.debug("new merge step merging list size:: " + mergingList.size());
         logger.debug("new merge step key data list size:: " + emptyingLeaf.keyDataList.size());
@@ -180,12 +185,13 @@ public class LevelMerge extends Thread {
                 if (fillingMultiPageBlockHeader == null) {
                     fillingMultiPageBlockHeader = parent.copyAndSetupMultiPageBlockHeader(currentFillingMultiPageBlockHeader, 0);
                 }
-
                 fillingMultiPageBlockHeader.updateCount(parent, true);
                 fillingMultiPageBlockHeader.incrementCountForNode();
                 currentFillingMultiPageBlockHeader = fillingMultiPageBlockHeader;
+
                 // as soon as the parent becomes consistent lets write it so that further routines have the correct information.
                 if (parent != DirectoryNode.getRoot()) {
+                    logger.debug(parent);
                     parent.writeToMultiPageBlockAtCursor();
                 } else {
                     DirectoryNode.writeRoot();
@@ -196,10 +202,15 @@ public class LevelMerge extends Thread {
                     // even after the split the merge will proceed in what is the current parent.
                     // depending on merge cursor the parent will either be the left half or right half, and merge cursor
                     // needs to be setup correctly for both nodes. also need to add the new node and seperator to parent's parent.
+                    logger.debug("Before the split.");
+                    logger.debug(parent);
                     DirectoryNode sibling = parent.split();
+                    logger.debug("After the split.");
+                    logger.debug(parent);
+                    logger.debug(sibling);
 
                     if (!parent.isMultiPageBlockHeaderPresent(fillingMultiPageBlockHeader.getMultiPageBlockNumber())) {
-                        logger.debug("splitting on filling page.");
+                        logger.warn("splitting on filling page.");
 /*                        MultiPageBlockHeader copyFillingMultiPageBlockHeader = parent.copyAndSetupMultiPageBlockHeader(fillingMultiPageBlockHeader, 1);
                         currentFillingMultiPageBlockHeader = copyFillingMultiPageBlockHeader;
 
@@ -315,7 +326,7 @@ public class LevelMerge extends Thread {
                 node.removeSubNodeAtCursor();
                 leafProcessing.setLeafNode((LeafNode)child);
 
-//                logger.warn(leafProcessing);
+                logger.debug(leafProcessing);
                 logMergePath(mergePath);
 
                 return leafProcessing;
