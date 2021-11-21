@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Getter @Setter
 public class LeafNode extends Node {
@@ -42,7 +43,7 @@ public class LeafNode extends Node {
     void serialize(ByteBuffer bb) throws IOException {
         bb.putInt(LEAF_NODE_IDENTIFIER);
         bb.putInt(keyDataList.size());
-        for (KeyData keyData: keyDataList) {
+        for (KeyData keyData : keyDataList) {
             keyData.serialize(bb);
         }
     }
@@ -65,7 +66,7 @@ public class LeafNode extends Node {
 
     String search(String key) {
         // you could do binary search here.
-        for (KeyData keyData: keyDataList) {
+        for (KeyData keyData : keyDataList) {
             if (keyData.getKey().equals(key)) {
                 return keyData.getData();
             }
@@ -81,8 +82,22 @@ public class LeafNode extends Node {
     }
 
     void inorder() {
-        for (KeyData keyData: keyDataList) {
+        for (KeyData keyData : keyDataList) {
             logger.info(keyData.getKey());
         }
+    }
+
+    List<KeyData> inorderLimited(String startKey, String endKey) throws Exception {
+        return keyDataList.stream().filter((KeyData keyData) -> (keyData.getKey().compareTo(startKey) >= 0) &&
+                keyData.getKey().compareTo(endKey) <= 0).collect(Collectors.toList());
+    }
+
+    List<KeyData> getKeyDataInRange(String startKey, String endKey) {
+        // using old style lambda for ease of reading. (Type arg) -> LOC => (Type) lambda1(arg) { LOC }
+        return keyDataList.stream().filter((KeyData keyData) -> keyData.getKey().compareTo(startKey) >= 0 && keyData.getKey().compareTo(endKey) <= 0).collect(Collectors.toList());
+    }
+
+    Node getSplittingNode(String startKey, String endKey) throws Exception {
+        throw new Exception("This should have been short-circuited at Directoryode level.");
     }
 }

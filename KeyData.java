@@ -6,13 +6,17 @@ import java.nio.ByteBuffer;
 
 @Getter
 @Setter
-class KeyData {
+class KeyData implements Comparable<KeyData> {
     String key;
     String data;
 
     KeyData(String key, String data) {
         setKey(key);
         setData(data);
+    }
+
+    public int compareTo(KeyData other) {
+        return key.compareTo(other.key);
     }
 
     static KeyData merge(KeyData keyData1, KeyData keyData2) {

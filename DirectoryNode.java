@@ -456,10 +456,7 @@ public class DirectoryNode extends Node {
         // it is best to save the seperator in the directory node, so you do not need to read the MPB.
         for (MultiPageBlockHeader multiPageBlockHeader: multiPageBlockHeaders) {
             multiPageBlockHeader.serialize(bb);
-            for (int i = 0; multiPageBlockHeader.getCountForNode() > 0 && i < multiPageBlockHeader.getCountForNode(); i++, subNodeIndex++)  {
-                if (subNodeIndex >= subNodes.size()) {
-                    logger.info("");
-                }
+            for (int i = 0; i < multiPageBlockHeader.getCountForNode(); i++, subNodeIndex++)  {
                 bb.putInt(subNodes.get(subNodeIndex));
                 if (subNodeIndex < subNodes.size() - 1) {
                     Utils.serializeString(bb, seperatorKeys.get(subNodeIndex));
@@ -664,5 +661,79 @@ public class DirectoryNode extends Node {
             logger.info(seperatorKeys.get(i));
         }
         readSubNode(i).inorder();
+    }
+
+    List<KeyData> inorderLimited(String startKey, String endKey) throws Exception {
+        int i;
+        List<KeyData> rangeData = new ArrayList<>();
+
+        for (i = 0; i < seperatorKeys.size(); i++) {
+            String seperator = seperatorKeys.get(i);
+
+            // skip subnodes left of a seperator lower than limit.
+            if (seperator.compareTo(startKey) < 0) {
+                continue;
+            }
+            rangeData.addAll(readSubNode(i).inorderLimited(startKey, endKey));
+
+            // if seperator is higher than limit, we stop
+            if (seperator.compareTo(endKey) > 0) {
+                break;
+            }
+        }
+
+        if (i < seperatorKeys.size()) {
+            rangeData.addAll(readSubNode(i).inorderLimited(startKey, endKey));
+        }
+
+        return rangeData;
+    }
+
+    Node getSplittingNodeFromSubNode(int i, String startKey, String endKey) throws Exception {
+        Node subNode = readSubNode(i);
+        // we need to address the fact that the 2 keys might be in same leaf.
+        if (subNode instanceof LeafNode) {
+            return subNode;
+        }
+
+        return subNode.getSplittingNode(startKey, endKey);
+    }
+
+    Node getSplittingNode(String startKey, String endKey) throws Exception {
+        int i;
+        int subNodeIndex = -1;
+
+        for (i = 0; i < seperatorKeys.size(); i++) {
+            String seperator = seperatorKeys.get(i);
+
+            if (subNodeIndex == -1 && seperator.compareTo(startKey) >= 0) {
+                subNodeIndex = i;
+            }
+
+            // is startKey and endKey in the same subnode, if so thats where we will find the splitting node.
+            if (seperator.compareTo(endKey) >= 0) {
+                if (subNodeIndex == i) {
+                    return getSplittingNodeFromSubNode(i, startKey, endKey);
+                } else {
+                    return this;
+                }
+            }
+        }
+
+        return getSplittingNodeFromSubNode(i, startKey, endKey);
+    }
+
+    List<KeyData> rangeSearch(String startKey, String endKey) throws Exception {
+        List<KeyData> rangeData = new ArrayList<>();
+
+        // find the splitting node.
+        Node node = getSplittingNode(startKey, endKey);
+        if (node instanceof LeafNode) {
+            return ((LeafNode) node).getKeyDataInRange(startKey, endKey);
+        }
+
+        rangeData.addAll(node.inorderLimited(startKey, endKey));
+
+        return rangeData;
     }
 }

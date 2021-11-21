@@ -1,6 +1,7 @@
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.ByteBuffer;
+import java.util.List;
 
 abstract public class Node extends Debuggable {
     static final int PAGE_SIZE = 4096;
@@ -54,4 +55,8 @@ abstract public class Node extends Debuggable {
     abstract String getStartKey() throws Exception;
 
     abstract void inorder() throws Exception;
+
+    abstract List<KeyData> inorderLimited(String startKey, String endKey) throws Exception;
+
+    abstract Node getSplittingNode(String startKey, String endKey) throws Exception;
 }

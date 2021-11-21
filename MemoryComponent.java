@@ -74,6 +74,37 @@ public class MemoryComponent {
         return removedBatch;
     }
 
+    List<KeyData> rangeSearch(String startKey, String endKey) {
+        // startKey if non null is non inclusive as it is the previous node's end key and so is already in a valid range.
+        boolean startKeyInclusive = false;
+
+        // Handle special cases.
+        if (startKey == null) {
+            startKey = dataMap.firstKey();
+            if (endKey != null && startKey.compareTo(endKey) > 0) {
+                return new ArrayList<>();
+            }
+            startKeyInclusive = true;
+        }
+        if (endKey == null) {
+            endKey = dataMap.lastKey();
+            if (startKey != null && startKey.compareTo(endKey) > 0) {
+                return new ArrayList<>();
+            }
+        }
+
+        logger.debug(startKey);
+        logger.debug(endKey);
+        Map<String, String> rangeMap = dataMap.subMap(startKey, startKeyInclusive, endKey, true);
+        List<KeyData> rangeResult = new ArrayList<>();
+
+        for (Map.Entry<String, String> entry: rangeMap.entrySet()) {
+            rangeResult.add(new KeyData(entry.getKey(), entry.getValue()));
+        }
+
+        return rangeResult;
+    }
+
     void insert(String key, String data) {
         dataMap.put(key, data);
     }
