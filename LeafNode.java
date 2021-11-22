@@ -75,10 +75,14 @@ public class LeafNode extends Node {
         return null;
     }
 
-    void writeToMultiPageBlock(MultiPageBlock multiPageBlock, int pageOffset) throws Exception {
-        ByteBuffer bb = multiPageBlock.getPageBuffer(pageOffset);
+    void writeToMultiPageBlock(MultiPageBlockHeader multiPageBlockHeader, int pageOffset) throws Exception {
+        MultiPageBlock multiPageBlock = MultiPageBlock.get(multiPageBlockHeader);
 
+        ByteBuffer bb = multiPageBlock.getPageBuffer(pageOffset);
         serialize(bb);
+
+        // update on disk.
+        multiPageBlock.write(multiPageBlockHeader);
     }
 
     void inorder() {

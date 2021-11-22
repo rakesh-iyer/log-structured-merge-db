@@ -198,14 +198,14 @@ public class DirectoryNode extends Node {
         multiPageBlockHeader.incrementCountForNode();
         multiPageBlock.incrementActivePages();
         child1.setParent(newRoot);
-        child1.writeToMultiPageBlock(multiPageBlock, 0);
+        child1.writeToMultiPageBlock(multiPageBlockHeader, 0);
 
         newRoot.subNodes.add(1);
         multiPageBlockHeader.incrementCount();
         multiPageBlockHeader.incrementCountForNode();
         multiPageBlock.incrementActivePages();
         child2.setParent(newRoot);
-        child2.writeToMultiPageBlock(multiPageBlock, 1);
+        child2.writeToMultiPageBlock(multiPageBlockHeader, 1);
 
         newRoot.seperatorKeys.add(seperatorKey);
         newRoot.multiPageBlockHeaders.add(multiPageBlockHeader);
@@ -227,9 +227,8 @@ public class DirectoryNode extends Node {
             siblingPageNumber = nodeMultiPageBlockHeader.getCount();
             nodeMultiPageBlockHeader.updateCount(this, true);
             nodeMultiPageBlockHeader.incrementCountForNode();
-            sibling.writeToMultiPageBlock(nodeMultiPageBlock, siblingPageNumber);
-            // do we need to update multi page block as well
             nodeMultiPageBlock.incrementActivePages();
+            sibling.writeToMultiPageBlock(nodeMultiPageBlockHeader, siblingPageNumber);
         } else {
             // insert sibling data into next available page of Multi Block indicated by siblingMultiPageBlockHeader
             siblingPageNumber = siblingMultiPageBlockHeader.getCount();
@@ -237,8 +236,8 @@ public class DirectoryNode extends Node {
             // update in the persistent store.
             siblingMultiPageBlockHeader.updateCount(this, true);
             siblingMultiPageBlockHeader.incrementCountForNode();
-            sibling.writeToMultiPageBlock(siblingMultiPageBlock, siblingPageNumber);
             siblingMultiPageBlock.incrementActivePages();
+            sibling.writeToMultiPageBlock(siblingMultiPageBlockHeader, siblingPageNumber);
         }
 
         return siblingPageNumber;
@@ -257,7 +256,7 @@ public class DirectoryNode extends Node {
             nodeMultiPageBlockHeader.updateCount(parent, true);
             nodeMultiPageBlockHeader.incrementCountForNode();
             nodeMultiPageBlock.incrementActivePages();
-            sibling.writeToMultiPageBlock(nodeMultiPageBlock, siblingPageNumber);
+            sibling.writeToMultiPageBlock(nodeMultiPageBlockHeader, siblingPageNumber);
         }
         if (insertAfter) {
             parent.insertSubNodeAfterCursor(siblingPageNumber, medianSeperatorKey, 1);
@@ -544,11 +543,8 @@ public class DirectoryNode extends Node {
 
     static DirectoryNode readRoot() {
         try {
-            FileInputStream file = new FileInputStream(new File(ROOT_FILE_NAME));
-
             byte[] buffer = new byte[Node.PAGE_SIZE];
-            file.read(buffer);
-
+            Utils.readFile(ROOT_FILE_NAME, buffer);
             return DirectoryNode.deserialize(ByteBuffer.wrap(buffer), null);
         } catch (Exception e) {
             logger.info("Exception reading root...");
@@ -586,9 +582,14 @@ public class DirectoryNode extends Node {
         }
     }
 
-    void writeToMultiPageBlock(MultiPageBlock multiPageBlock, int pageOffset) throws Exception {
+    void writeToMultiPageBlock(MultiPageBlockHeader multiPageBlockHeader, int pageOffset) throws Exception {
+        MultiPageBlock multiPageBlock = MultiPageBlock.get(multiPageBlockHeader);
+
         ByteBuffer bb = multiPageBlock.getPageBuffer(pageOffset);
         serialize(bb);
+
+        // update on disk.
+        multiPageBlock.write(multiPageBlockHeader);
     }
 
     boolean isMultiPageBlockHeaderPresent(int multiPageBlockNumber) {
@@ -616,7 +617,7 @@ public class DirectoryNode extends Node {
         MultiPageBlockHeader multiPageBlockHeader = parent.getMultiPageBlockHeader(parent.mergeSubNodeCursor + cursorOffset);
         int offset = parent.getSubNodes().get(parent.mergeSubNodeCursor + cursorOffset);
 
-        writeToMultiPageBlock(MultiPageBlock.get(multiPageBlockHeader), offset);
+        writeToMultiPageBlock(multiPageBlockHeader, offset);
     }
 
     MultiPageBlockHeader copyAndSetupMultiPageBlockHeader(MultiPageBlockHeader multiPageBlockHeader, int countForNode) {
@@ -632,10 +633,9 @@ public class DirectoryNode extends Node {
     void writeToMultiPageBlockAtCursor() throws Exception {
         DirectoryNode parent = getParent();
         MultiPageBlockHeader parentMultiPageBlockHeader = parent.getMultiPageBlockHeaderAtCursor(0);
-        MultiPageBlock parentMultiPageBlock = MultiPageBlock.get(parentMultiPageBlockHeader);
         Integer parentPageNumber = parent.subNodes.get(parent.mergeSubNodeCursor);
 
-        writeToMultiPageBlock(parentMultiPageBlock, parentPageNumber);
+        writeToMultiPageBlock(parentMultiPageBlockHeader, parentPageNumber);
     }
 
     void persistNodeInformation() throws Exception {
@@ -643,7 +643,7 @@ public class DirectoryNode extends Node {
         int offset = DirectoryNode.offsetMap.get(parent);
         MultiPageBlockHeader multiPageBlockHeader = parent.getMultiPageBlockHeader(offset);
         int nodePageOffset = parent.getSubNodes().get(offset);
-        writeToMultiPageBlock(MultiPageBlock.get(multiPageBlockHeader), nodePageOffset);
+        writeToMultiPageBlock(multiPageBlockHeader, nodePageOffset);
     }
 
     Node readSubNode(int index) throws Exception {

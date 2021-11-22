@@ -33,6 +33,11 @@ public class LevelMerge extends Thread {
         LeafNode leafNode;
     }
 
+    void writeFillingBlock() throws Exception {
+        MultiPageBlock fillingBlock = getFillingBlock();
+        fillingBlock.write(currentFillingMultiPageBlockHeader);
+    }
+
     LeafNode getNextFillingLeaf(DirectoryNode parent) throws Exception {
         // persist the current filling leaf.
         writeCurrentFillingLeaf();
@@ -40,6 +45,7 @@ public class LevelMerge extends Thread {
         if (fillingBlocks.isEmpty() || getFillingBlock().isFull()) {
             MultiPageBlockHeader multiPageBlockHeader = MultiPageBlock.allocate();
             currentFillingMultiPageBlockHeader = multiPageBlockHeader;
+
             logger.info("New filling block created with block number - " + multiPageBlockHeader.getMultiPageBlockNumber());
             fillingBlocks.add(MultiPageBlock.get(multiPageBlockHeader));
             // insert Filling MultiPageblockHeader at the parent's current merge cursor and increment the cursor.
@@ -89,6 +95,7 @@ public class LevelMerge extends Thread {
                 root.insertSubNodeAtCursor(fillingBlock.getActivePages(), fillingEntry.getKey(), 0);
                 // update the active pages and count corresponding to the multi page block.
                 fillingBlock.incrementActivePages();
+
                 MultiPageBlockHeader rootMultiPageBlockHeader = root.getMultiPageBlockHeaderAtCursor(-1);
                 // the root has no siblings sharing the header so this is a single node increment.
                 rootMultiPageBlockHeader.incrementCount();
@@ -129,7 +136,7 @@ public class LevelMerge extends Thread {
             return;
         }
         MultiPageBlock fillingBlock = getFillingBlock();
-        currentFillingLeaf.writeToMultiPageBlock(fillingBlock, fillingBlock.getActivePages() - 1);
+        currentFillingLeaf.writeToMultiPageBlock(currentFillingMultiPageBlockHeader, fillingBlock.getActivePages() - 1);
     }
 
     // this will merge all the key data in a leaf with all the keys extracted from the earlier component.
@@ -210,21 +217,7 @@ public class LevelMerge extends Thread {
                     logger.debug(sibling);
 
                     if (!parent.isMultiPageBlockHeaderPresent(fillingMultiPageBlockHeader.getMultiPageBlockNumber())) {
-                        logger.warn("splitting on filling page.");
-/*                        MultiPageBlockHeader copyFillingMultiPageBlockHeader = parent.copyAndSetupMultiPageBlockHeader(fillingMultiPageBlockHeader, 1);
-                        currentFillingMultiPageBlockHeader = copyFillingMultiPageBlockHeader;
-
-                        // we are splitting right on the filling page just added, so move it to this node.
-                        int lastSiblingIndex = sibling.getSubNodes().size() - 1;
-                        MultiPageBlockHeader siblingMultiPageBlockHeader = sibling.getMultiPageBlockHeader(lastSiblingIndex);
-                        Integer fillingPage = sibling.getSubNodes().remove(lastSiblingIndex);
-                        siblingMultiPageBlockHeader.decrementCountForNode();
-                        String newParentSeperatorKey = sibling.getSeperatorKeys().remove(sibling.getSeperatorKeys().size() - 1);
-                        String currentParentSeperatorKey = parent.getParent().getSeperatorKeys().set(parent.getParent().mergeSubNodeCursor - 1, newParentSeperatorKey);
-                        // Add the subnode and median seperator key to the emptying leafs parent node.
-                        parent.insertSubNodeAtCursor(fillingPage, currentParentSeperatorKey, 1);
-                        sibling.writeToMultiPageBlock(-1);*/
-
+                        logger.debug("splitting on filling page.");
                         splitOnFillingPage(parent, sibling, fillingMultiPageBlockHeader);
                     }
                 }

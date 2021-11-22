@@ -15,11 +15,13 @@ public class LSM2Level {
 
     LSM2Level() {
         if (!Files.exists(Paths.get(DirectoryNode.ROOT_FILE_NAME))) {
-            DirectoryNode root = new DirectoryNode(null);
-            DirectoryNode.setRoot(root);
+            DirectoryNode.setRoot(new DirectoryNode(null));
             DirectoryNode.writeRoot();
+        } else {
+            DirectoryNode.readRoot();
         }
     }
+
     void insert(String key, String data) {
         memoryComponent.insert(key, data);
     }

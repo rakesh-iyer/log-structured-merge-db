@@ -1,3 +1,5 @@
+import java.io.File;
+import java.io.FileInputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -64,5 +66,21 @@ public class Utils {
         }
 
         return merged;
+    }
+
+    static byte[] readFile(String fileName, byte[] buffer) throws Exception {
+        FileInputStream file = new FileInputStream(new File(fileName));
+
+        file.read(buffer);
+
+        return buffer;
+    }
+
+    static byte[] readFile(String fileName, byte[] buffer, int offset, int length) throws Exception {
+        FileInputStream file = new FileInputStream(new File(fileName));
+
+        file.read(buffer, offset, length);
+
+        return buffer;
     }
 }
