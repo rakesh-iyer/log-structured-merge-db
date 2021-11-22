@@ -62,6 +62,7 @@ public class MultiPageBlock extends Debuggable {
         fileChannel.write(activePagesBuffer);
 
         blockBB.clear();
+        // This may not write all the bytes, so we need to make this a synch call.
         fileChannel.write(blockBB);
         fileChannel.force(true);
         fileChannel.close();
@@ -89,6 +90,7 @@ public class MultiPageBlock extends Debuggable {
         multiPageBlock.setActivePages(intBuffer.getInt());
 
         multiPageBlock.blockBB.clear();
+        // This may not read all the bytes, so we need to make this a synch call.
         fileChannel.read(multiPageBlock.blockBB);
         inMemoryMultiPageBlocks.put(multiPageBlockNumber, multiPageBlock);
 
